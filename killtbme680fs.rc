@@ -1,0 +1,8 @@
+#!/bin/rc
+
+unmount /srv/bme680 /mnt
+
+kpidlist=`{ps | grep bme680fs | awk '{print $2}'}
+kpid=`{echo $kpidlist | awk '{print $1}'}
+
+echo kill > /proc/$kpid/ctl
