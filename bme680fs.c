@@ -1132,7 +1132,7 @@ fsreadall(Req *r)
 	char out[128];
 	bme680readall();
 
-	
+	snprint(out, sizeof(out), "temp(C):\t%.2f\thum(%%r.H.):\t%.2f\tpres(hPa):\t%.2f\tgas(Ohm):\t%.2f\n", mesdat.temp, mesdat.hum, mesdat.pres / 100.0f, mesdat.gas);
 
 	readstr(r, out);
 	return nil;
