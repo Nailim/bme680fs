@@ -1,0 +1,39 @@
+#!/bin/rc
+
+
+# add to cron to periodicly collet data
+# exsample (if installed in bin/rc) coleect data every 5 minutes)
+# 0,5,10,15,20,25,30,35,40,45,55 * * * * local collectbme680fs.rc
+
+
+#rfork
+
+# log file location
+lf=/sys/log/bme680
+
+# human readable date format (no whitespace)
+hdf=YYYY.MM.DD-hh:mm:ss
+
+# check if log file exist, otherwise create one with headder
+if (! test -r $lf){
+	echo 'timestamp datetime temp(C) hum(%r.H.) pres(hPa) gas(Ohm)' \
+	| awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' >>$lf
+}
+
+# only run if sensor is accesible
+if (test -r /srv/bme680) {
+
+	# mount sensor if not mounted
+	if (test ! -r /mnt/bme680/all) {
+		mount -b /srv/bme680 /mnt
+	}
+
+	# if mounted collect data and save
+	if (test -r /mnt/bme680/all) {
+		bmeraw=`{cat /mnt/bme680/all}
+		#echo $bmeraw >>/sys/log/bme680
+		mdate=`{date -n}
+		hdate=`{date -f $hdf $mdate}
+		echo $mdate $hdate $bmeraw | awk '{print $1"\t"$2"\t"$4"\t"$6"\t"$8"\t"$10}' >>$lf
+	}
+}
