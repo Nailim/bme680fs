@@ -14,10 +14,10 @@ lf=/sys/log/bme680
 # human readable date format (no whitespace)
 hdf=YYYY.MM.DD-hh:mm:ss
 
-# check if log file exist, otherwise create one with headder
-if (! test -r $lf){
+# create file with data headder to describe values
+if (! test -r $lf.header){
 	echo 'timestamp datetime temp(C) hum(%r.H.) pres(hPa) gas(Ohm)' \
-	| awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' >>$lf
+	| awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' >>$lf.header
 }
 
 # only run if sensor is accesible
