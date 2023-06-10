@@ -1,0 +1,16 @@
+#!/bin/rc
+
+
+# only run if sensor is accesible
+if (test -r /srv/bme680) {
+
+	# mount sensor if not mounted
+	if (test ! -r /mnt/bme680/all) {
+		mount -b /srv/bme680 /mnt
+	}
+
+	# if mounted collect data and save
+	if (test -r /mnt/bme680/all) {
+		cat /mnt/bme680/all
+	}
+}
