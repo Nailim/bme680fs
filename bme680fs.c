@@ -53,6 +53,7 @@ typedef struct AllParameters AllParameters;
 
 uchar	bme680getchipid(void);
 uchar	bme680softreset(void);
+void	bme680resetparameters(void);
 void	bme680readcalibrationdata(void);
 float	bme680gettemp(void);
 float	bme680getpress(void);
@@ -198,6 +199,7 @@ enum
 	filter,
 	gas_wait,
 	gas_temp,
+	reset,
 };
 
 static char *cmds[] = {
@@ -207,6 +209,7 @@ static char *cmds[] = {
 	[filter]	= "filter",
 	[gas_wait]	= "gas_wait",
 	[gas_temp]	= "gas_temp",
+	[reset]		= "reset",
 	nil
 };
 
@@ -307,6 +310,10 @@ initi2cdev(void)
 
 	/* read calibration data */
 	bme680readcalibrationdata();
+
+	/* set parameters */
+	bme680resetparameters();
+
 	/*
 	fprint(1, "par_t1 val: %d\n", caldat.par_t1);
 	fprint(1, "par_t2 val: %d\n", caldat.par_t2);
@@ -337,21 +344,6 @@ initi2cdev(void)
 	fprint(1, "res_heat_range val: %d\n", caldat.res_heat_range);
 	fprint(1, "ragenge_sw_error val: %d\n", caldat.range_sw_error);
 	*/
-
-	/* set default parameters for measurments */
-	pardat.filter = 0x00;	/* disable low pass filter */
-	pardat.pres = 0x04;		/* 8x oversampling */
-	pardat.temp = 0x03;		/* 4x oversampling */
-	pardat.hum = 0x03;		/* 4x oversampling */
-	pardat.gastime = 0x59;	/* 100ms = 4 * 25ms */
-	pardat.gastemp = 100.0;	/* 100 deg C */
-
-	/* init all measurments structure */
-	mesdat.temp = 0.0;
-	mesdat.pres = 0.0;
-	mesdat.hum = 0.0;
-	mesdat.gas = 0.0;
-	mesdat.time = 0;
 }
 
 void
@@ -401,6 +393,25 @@ bme680softreset(void)
 	pread(i2cfd, &res, 1, 0);
 
 	return res;
+}
+
+void
+bme680resetparameters(void)
+{
+	/* set default parameters for measurments */
+	pardat.filter = 0x00;	/* disable low pass filter */
+	pardat.pres = 0x04;		/* 8x oversampling */
+	pardat.temp = 0x03;		/* 4x oversampling */
+	pardat.hum = 0x03;		/* 4x oversampling */
+	pardat.gastime = 0x59;	/* 100ms = 4 * 25ms */
+	pardat.gastemp = 100.0;	/* 100 deg C */
+
+	/* init all measurments structure */
+	mesdat.temp = 0.0;
+	mesdat.pres = 0.0;
+	mesdat.hum = 0.0;
+	mesdat.gas = 0.0;
+	mesdat.time = 0;
 }
 
 void
@@ -1037,6 +1048,12 @@ fswritectl(Req *r)
 		if(para > 400){
 			pardat.gastemp = 400;	
 		}
+		break;
+	case reset:
+		/* no parameters gere */
+		/* perform reset - ignore reset status, if we're here if was able to reset on init */
+		bme680softreset();
+		bme680resetparameters();
 		break;
 
 	default:
