@@ -336,6 +336,7 @@ initi2cdev(void)
 	fprint(1, "par_h4 val: %d\n", caldat.par_h4);
 	fprint(1, "par_h5 val: %d\n", caldat.par_h5);
 	fprint(1, "par_h6 val: %d\n", caldat.par_h6);
+	fprint(1, "par_h7 val: %d\n", caldat.par_h7);
 
 	fprint(1, "par_g1 val: %d\n", caldat.par_g1);
 	fprint(1, "par_g2 val: %d\n", caldat.par_g2);
@@ -464,19 +465,20 @@ bme680readcalibrationdata(void)
 	pread(i2cfd, &caldat.par_p10, 1, 0);
 
 	/* read humidity calibration data */
-	/* par_h1 (msb 4bit <3:0>), par_h2 (msb 4bit <7:4>) */
+	/* par_h1 (lsb 4bit <3:0>), par_h2 (lsb 4bit <7:4>) */
 	cmd = 0xE2;
 	pwrite(i2cfd, &cmd, 1, 0);
 	pread(i2cfd, &buf, 1, 0);
-
-	cmd = 0xE3;		/* par_h1 (lsb) - 12bit */
+	cmd = 0xE3;		/* par_h1 (msb) - 12bit */
+	caldat.par_h1 = 0;	/* clear since we read in only 1 byte but the var is 2 bytes long */
 	pwrite(i2cfd, &cmd, 1, 0);
 	pread(i2cfd, &caldat.par_h1, 1, 0);
-	caldat.par_h1 = (caldat.par_h1<<4) | ((short)(buf & 0x0F));	/* msb + lsb */
-	cmd = 0xE1;		/* par_h2 (lsb) - 12bit */
+	caldat.par_h1 = (caldat.par_h1<<4) | ((unsigned short)(buf & 0x0F));	/* msb + lsb */
+	cmd = 0xE1;		/* par_h2 (msb) - 12bit */
+	caldat.par_h2 = 0;	/* clear since we read in only 1 byte but the var is 2 bytes long */
 	pwrite(i2cfd, &cmd, 1, 0);
 	pread(i2cfd, &caldat.par_h2, 1, 0);
-	caldat.par_h2 = (caldat.par_h2<<4) | (((short)(buf & 0xF0))>>4);	/* msb + lsb */
+	caldat.par_h2 = (caldat.par_h2<<4) | (((unsigned short)(buf & 0xF0))>>4);	/* msb + lsb */
 	cmd = 0xE4;		/* par_h3 address - 8bit */
 	pwrite(i2cfd, &cmd, 1, 0);
 	pread(i2cfd, &caldat.par_h3, 1, 0);
@@ -502,7 +504,7 @@ bme680readcalibrationdata(void)
 	pread(i2cfd, &caldat.par_g2, 2, 0);
 	cmd = 0xEE;		/* par_g3 address - 8bit */
 	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_g1, 1, 0);
+	pread(i2cfd, &caldat.par_g3, 1, 0);
 
 	cmd = 0x02;		/* res_heat_range (lsb) - 2bit */
 	pwrite(i2cfd, &cmd, 1, 0);
@@ -511,9 +513,10 @@ bme680readcalibrationdata(void)
 	cmd = 0x00;		/* res_heat_val address - 8bit */
 	pwrite(i2cfd, &cmd, 1, 0);
 	pread(i2cfd, &caldat.res_heat_val, 1, 0);
-	cmd = 0x04;		/* range_sw_error address - 8bit */
+	cmd = 0x04;		/* range_sw_error address - 4bit */
 	pwrite(i2cfd, &cmd, 1, 0);
 	pread(i2cfd, &caldat.range_sw_error, 1, 0);
+	caldat.range_sw_error = (((char)(caldat.range_sw_error & 0xF0))>>4);
 }
 
 float
