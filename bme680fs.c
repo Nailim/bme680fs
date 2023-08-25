@@ -8,6 +8,10 @@
 #include <9p.h>
 
 
+/* mas definitions */
+#define MASK_CTRL_MEAS_MODE 0x05
+
+
 /* 9p filesystem functions */
 typedef struct Devfile Devfile;
 
@@ -561,11 +565,11 @@ bme680gettemp(void)
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
-	cmd[0] = 0x1D;
-	do{
+	cmd[0] = 0x74;
+	do {
 		pwrite(i2cfd, &cmd[0], 1, 0);
 		pread(i2cfd, &buf[0], 1, 0);
-	}while ((buf[0] & 0x20) > 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
@@ -630,11 +634,11 @@ bme680getpress(void)
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
-	cmd[0] = 0x1D;
-	do{
+	cmd[0] = 0x74;
+	do {
 		pwrite(i2cfd, &cmd[0], 1, 0);
 		pread(i2cfd, &buf[0], 1, 0);
-	}while ((buf[0] & 0x20) > 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
@@ -721,11 +725,11 @@ bme680gethum(void)
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
-	cmd[0] = 0x1D;
-	do{
+	cmd[0] = 0x74;
+	do {
 		pwrite(i2cfd, &cmd[0], 1, 0);
 		pread(i2cfd, &buf[0], 1, 0);
-	}while ((buf[0] & 0x20) > 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
@@ -831,11 +835,11 @@ bme680readall(void)
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
-	cmd[0] = 0x1D;
-	do{
+	cmd[0] = 0x74;
+	do {
 		pwrite(i2cfd, &cmd[0], 1, 0);
 		pread(i2cfd, &buf[0], 1, 0);
-	}while ((buf[0] & 0x20) > 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
@@ -899,11 +903,11 @@ bme680readall(void)
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
-	cmd[0] = 0x1D;
-	do{
+	cmd[0] = 0x74;
+	do {
 		pwrite(i2cfd, &cmd[0], 1, 0);
 		pread(i2cfd, &buf[0], 1, 0);
-	}while ((buf[0] & 0x20) > 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read pressure from adc */
