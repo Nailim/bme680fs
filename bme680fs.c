@@ -11,6 +11,13 @@
 /* mas definitions */
 #define MASK_CTRL_MEAS_MODE 0x03
 
+#define MASK_CTRL_REG_70 	0x08
+#define MASK_CTRL_REG_71 	0x1F
+#define MASK_CTRL_REG_72 	0x47
+#define MASK_CTRL_REG_73 	0x10
+#define MASK_CTRL_REG_74 	0xFF
+#define MASK_CTRL_REG_75 	0x1D
+
 
 /* 9p filesystem functions */
 typedef struct Devfile Devfile;
@@ -535,33 +542,48 @@ bme680gettemp(void)
 
 	uchar cmd[2];
 	uchar buf[3];
+	uchar reg_val[6];	// read regs 0x70-0x75 to ONLY change their value
+
+
+	/* get sensor control registry state ... */
+
+	/* wait if any measurment is in progress */
+	cmd[0] = 0x74;
+	do {
+		pwrite(i2cfd, &cmd[0], 1, 0);
+		pread(i2cfd, &buf[0], 1, 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+	/* read control registries */
+	cmd[0] = 0x70;
+	pwrite(i2cfd, &cmd[0], 1, 0);
+	pread(i2cfd, &reg_val[0], 6, 0);
 
 
 	/* set humidity settings */
 
-	/* 0x72 - ctrl_hum - osrs_h<2:0>*/
+	/* 0x72 - ctrl_hum - osrs_h<2:0> - skip humidity measurment */
 	cmd[0] = 0x72;
-	cmd[1] = 0x00;	/* skipp humidity measurment */
+	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & 0x00);
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
-	/* 0x75 - config - filter<4:2>*/
+	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
-	cmd[1] = (pardat.filter<<2);	/* low pass filter for temp and pressure */
+	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
 
-	/* 0x71 - ctrl_gas_1 - run_gass<4>*/
+	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
-	cmd[1] = (0x00<<4);	/* skip gass measurment */
+	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
-	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0>*/
+	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, skip pressure measurment, FORCED MODE */
 	cmd[0] = 0x74;
-	cmd[1] = (pardat.temp<<5) + (0x00<<2) + 0x01;	/* set temp, skip pressure measurment, FORCED MODE */
+	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (0x00<<2) + 0x01));	
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
@@ -604,33 +626,48 @@ bme680getpress(void)
 
 	uchar cmd[2];
 	uchar buf[3];
+	uchar reg_val[6];	// read regs 0x70-0x75 to ONLY change their value
+
+
+	/* get sensor control registry state ... */
+
+	/* wait if any measurment is in progress */
+	cmd[0] = 0x74;
+	do {
+		pwrite(i2cfd, &cmd[0], 1, 0);
+		pread(i2cfd, &buf[0], 1, 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+	/* read control registries */
+	cmd[0] = 0x70;
+	pwrite(i2cfd, &cmd[0], 1, 0);
+	pread(i2cfd, &reg_val[0], 6, 0);
 
 
 	/* set humidity settings */
 
-	/* 0x72 - ctrl_hum - osrs_h<2:0>*/
+	/* 0x72 - ctrl_hum - osrs_h<2:0> - skip humidity measurment */
 	cmd[0] = 0x72;
-	cmd[1] = 0x00;	/* skipp humidity measurment*/
+	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & 0x00);
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
-	/* 0x75 - config - filter<4:2>*/
+	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
-	cmd[1] = (pardat.filter<<2);	/* low pass filter for temp and pressure */
+	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
 
-	/* 0x71 - ctrl_gas_1 - run_gass<4>*/
+	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
-	cmd[1] = (0x00<<4);	/* skip gass measurment */
+	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
-	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0>*/
+	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, set pressure, FORCED MODE */
 	cmd[0] = 0x74;
-	cmd[1] = (pardat.temp<<5) + (pardat.pres<<2) + 0x01;	/* set temp, set pressure, FORCED MODE */
+	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (pardat.pres<<2) + 0x01));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
@@ -695,33 +732,48 @@ bme680gethum(void)
 
 	uchar cmd[2];
 	uchar buf[3];
+	uchar reg_val[6];	// read regs 0x70-0x75 to ONLY change their value
+
+
+	/* get sensor control registry state ... */
+
+	/* wait if any measurment is in progress */
+	cmd[0] = 0x74;
+	do {
+		pwrite(i2cfd, &cmd[0], 1, 0);
+		pread(i2cfd, &buf[0], 1, 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+	/* read control registries */
+	cmd[0] = 0x70;
+	pwrite(i2cfd, &cmd[0], 1, 0);
+	pread(i2cfd, &reg_val[0], 6, 0);
 
 
 	/* set humidity settings */
 
-	/* 0x72 - ctrl_hum - osrs_h<2:0>*/
+	/* 0x72 - ctrl_hum - osrs_h<2:0> - set humidity */
 	cmd[0] = 0x72;
-	cmd[1] = pardat.hum;	/* set hum */
+	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & pardat.hum);
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
-	/* 0x75 - config - filter<4:2>*/
+	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
-	cmd[1] = (pardat.filter<<2);	/* low pass filter for temp and pressure */
+	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
 
-	/* 0x71 - ctrl_gas_1 - run_gass<4>*/
+	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
-	cmd[1] = (0x00<<4);	/* skip gass measurment */
+	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
-	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0>*/
+	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, skip pressure measurment, FORCED MODE */
 	cmd[0] = 0x74;
-	cmd[1] = (pardat.temp<<5) + (0x00<<2) + 0x01;	/* set temp, skip pressure measurment, FORCED MODE */
+	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (0x00<<2) + 0x01));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
@@ -802,36 +854,50 @@ bme680readall(void)
 
 	uchar cmd[2];
 	uchar buf[3];
+	uchar reg_val[6];	// read regs 0x70-0x75 to ONLY change their value
 
 
 	/* STEP 1 - get temperature for ambient temperature refenrence*/
 
+	/* get sensor control registry state ... */
+
+	/* wait if any measurment is in progress */
+	cmd[0] = 0x74;
+	do {
+		pwrite(i2cfd, &cmd[0], 1, 0);
+		pread(i2cfd, &buf[0], 1, 0);
+	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+	/* read control registries */
+	cmd[0] = 0x70;
+	pwrite(i2cfd, &cmd[0], 1, 0);
+	pread(i2cfd, &reg_val[0], 6, 0);
+
 
 	/* set humidity settings */
 
-	/* 0x72 - ctrl_hum - osrs_h<2:0>*/
+	/* 0x72 - ctrl_hum - osrs_h<2:0> - skipp humidity measurment */
 	cmd[0] = 0x72;
-	cmd[1] = 0x00;	/* skipp humidity measurment */
+	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & 0x00);
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
-	/* 0x75 - config - filter<4:2>*/
+	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
-	cmd[1] = (pardat.filter<<2);	/* low pass filter for temp and pressure */
+	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
 
-	/* 0x71 - ctrl_gas_1 - run_gass<4>*/
+	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
-	cmd[1] = (0x00<<4);	/* skip gass measurment */
+	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
-	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0>*/
+	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, skip pressure measurment, FORCED MODE */
 	cmd[0] = 0x74;
-	cmd[1] = (pardat.temp<<5) + (0x00<<2) + 0x01;	/* set temp, skip pressure measurment, FORCED MODE */
+	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (0x00<<2) + 0x01));	
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
@@ -847,6 +913,7 @@ bme680readall(void)
 	pwrite(i2cfd, &cmd[0], 1, 0);
 	pread(i2cfd, &buf[0], 3, 0);
 
+
 	/* calculate values */
 	temp_raw = ((int)((int)buf[0]<<16) | (int)((int)buf[1]<<8) | (int)buf[2])>>4;
 
@@ -860,6 +927,13 @@ bme680readall(void)
 
 	/* STEP 2 - mesure gas with known ambient temperature */
 
+
+	/* get sensor control registry state ... read control registries */
+	cmd[0] = 0x70;
+	pwrite(i2cfd, &cmd[0], 1, 0);
+	pread(i2cfd, &reg_val[0], 6, 0);
+
+
 	/* calculate heater resistance*/
 	var1 = ((float)caldat.par_g1 / 16.0f) + 49.0f;
 	var2 = (((float)caldat.par_g2 / 32768.0f) * 0.0005f) + 0.00235f;
@@ -868,16 +942,17 @@ bme680readall(void)
 	var5 = var4 + (var3 * (float)temp_comp);
 	res_heat_x = (unsigned char)(3.4f * ((var5 * (4.0f / (4.0f + (float)caldat.res_heat_range)) * (1.0f/(1.0f + ((float)caldat.res_heat_val * 0.002f)))) - 25));
 
+
 	/* set humidity settings */
 
-	/* 0x72 - ctrl_hum - osrs_h<2:0>*/
+	/* 0x72 - ctrl_hum - osrs_h<2:0> - set hum */
 	cmd[0] = 0x72;
-	cmd[1] = pardat.hum;	/* set hum */
+	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & (pardat.hum));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
-	/* 0x75 - config - filter<4:2>*/
+	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
-	cmd[1] = (pardat.filter<<2);	/* low pass filter for temp and pressure */
+	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
@@ -890,17 +965,18 @@ bme680readall(void)
 	cmd[0] = 0x5A;
 	cmd[1] = res_heat_x;	/* calculated above */
 	pwrite(i2cfd, &cmd[0], 2, 0);
-	/* 0x71 - ctrl_gas_1 - run_gass<4> nb_conv<3:0>*/
+	/* 0x71 - ctrl_gas_1 - run_gass<4> nb_conv<3:0> - enable gass measurment, select defined heater settings */
 	cmd[0] = 0x71;
-	cmd[1] = (0x01<<4) + 0x00;	/* enable gass measurment, select defined heater settings */
+	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & ((0x01<<4) + 0x00));
 	pwrite(i2cfd, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
-	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0>*/
+	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, set pres, FORCED MODE */
 	cmd[0] = 0x74;
-	cmd[1] = (pardat.temp<<5) + (pardat.pres<<2) + 0x01;	/* set temp, set pres, FORCED MODE */
+	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (pardat.pres<<2) + 0x01));
 	pwrite(i2cfd, &cmd[0], 2, 0);
+
 
 	/* wait while measurment is in progress */
 	cmd[0] = 0x74;
@@ -959,6 +1035,7 @@ bme680readall(void)
 
 	var1 = (1340.0f + 5.0f * (float)caldat.range_sw_error) * (float)gas_range_const_array1_f[gas_range];
 	gas_comp = var1 * (float)gas_range_const_array2_f[gas_range] / ((float)gas_raw - 512.0f + var1);
+
 
 	mesdat.temp = temp_comp;
 	mesdat.pres = pres_comp;
