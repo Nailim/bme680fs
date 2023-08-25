@@ -9,7 +9,7 @@
 
 
 /* mas definitions */
-#define MASK_CTRL_MEAS_MODE 0x05
+#define MASK_CTRL_MEAS_MODE 0x03
 
 
 /* 9p filesystem functions */
