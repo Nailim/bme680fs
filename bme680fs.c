@@ -961,6 +961,7 @@ bme680readall(void)
 	/* 0x64 - gas_wait_0 - how long to heat*/
 	cmd[0] = 0x64;
 	cmd[1] = pardat.gastime;
+	pwrite(i2cfd, &cmd[0], 2, 0);
 	/* 0x5A - res_heat_0 - how much to heat */
 	cmd[0] = 0x5A;
 	cmd[1] = res_heat_x;	/* calculated above */
