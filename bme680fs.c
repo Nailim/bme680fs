@@ -64,6 +64,7 @@ typedef struct AllParameters AllParameters;
 
 uchar	bme680getchipid(void);
 uchar	bme680softreset(void);
+void	bme680setundocumented(void);
 void	bme680resetparameters(void);
 void	bme680readcalibrationdata(void);
 float	bme680gettemp(void);
@@ -225,6 +226,11 @@ static char *cmds[] = {
 };
 
 
+/* logic state tracking variables */
+static int stu;		/* undocumented features - set parameters as observed from BSEC library instead of documentation */
+
+
+
 void
 initfs(char *dirname)
 {
@@ -325,6 +331,11 @@ initi2cdev(void)
 	/* set parameters */
 	bme680resetparameters();
 
+	/* set undocumented features as decoded from BSEC lib */
+	if (stu) {
+		bme680setundocumented();
+	}
+
 	/*
 	fprint(1, "par_t1 val: %d\n", caldat.par_t1);
 	fprint(1, "par_t2 val: %d\n", caldat.par_t2);
@@ -408,6 +419,18 @@ bme680softreset(void)
 }
 
 void
+bme680setundocumented(void)
+{
+	uchar cmd[2];
+
+	cmd[0] = 0x71;  /* location of ctrl_gas_1 register */
+	cmd[1] = 0x80;  /* set bit 7 (undocumented, do not change) from 0 to 1 */
+
+	pwrite(i2cfd, &cmd[0], 2, 0);
+
+}
+
+void
 bme680resetparameters(void)
 {
 	/* set default parameters for measurments */
@@ -415,8 +438,16 @@ bme680resetparameters(void)
 	pardat.pres = 0x04;		/* 8x oversampling */
 	pardat.temp = 0x03;		/* 4x oversampling */
 	pardat.hum = 0x03;		/* 4x oversampling */
-	pardat.gastime = 0x59;	/* 100ms = 4 * 25ms */
-	pardat.gastemp = 300.0;	/* 300 deg C */
+
+	if (stu) {
+		/* set gas temperature and wait time as decoded from BSEC library */
+		pardat.gastime = 0x71;	/* 196ms = 4 * 49ms */
+		pardat.gastemp = 260.0;	/* 260 deg C */
+	} else {
+		/* set gas temperature and wait time as in documentation example */
+		pardat.gastime = 0x59;	/* 100ms = 4 * 25ms */
+		pardat.gastemp = 300.0;	/* 300 deg C */
+	}
 
 	/* init all measurments structure */
 	mesdat.temp = 0.0;
@@ -1135,10 +1166,13 @@ fswritectl(Req *r)
 		}
 		break;
 	case reset:
-		/* no parameters gere */
-		/* perform reset - ignore reset status, if we're here if was able to reset on init */
+		/* no parameters here */
+		/* perform reset - ignore reset status, if we're here it was able to reset on init */
 		bme680softreset();
 		bme680resetparameters();
+		if (stu) {
+			bme680setundocumented();
+		}
 		break;
 
 	default:
@@ -1249,12 +1283,10 @@ fswriteall(Req *r)
 }
 
 
-
-
 void
 usage(void)
 {
-	fprint(2, "usage: %s [-m mntpt] [-s srvname]\n", argv0);
+	fprint(2, "usage: %s [-u] [-m mntpt] [-s srvname]\n", argv0);
 	exits("usage");
 }
 
@@ -1262,12 +1294,20 @@ usage(void)
 void
 threadmain(int argc, char *argv[])
 {
+	/* state tracking initialization */
+	stu = 0;
+
+
 	char *srvname, *mntpt;
 
 	srvname = "bme680";
 	mntpt = "/mnt";
 
 	ARGBEGIN {
+	case 'u':
+		stu = 1;
+		fprint(1, "going undocumented baby\n");
+		break;
 	case 'm':
 		mntpt = ARGF();
 		break;
@@ -1277,6 +1317,7 @@ threadmain(int argc, char *argv[])
 	default:
 		usage();
 	} ARGEND
+
 
 	initfs(srvname);
 
