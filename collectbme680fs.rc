@@ -30,9 +30,6 @@ if (test -r /srv/bme680) {
 
 	# if mounted collect data and save
 	if (test -r /mnt/bme680/all) {
-		# reset sensor and parameters to default state
-		echo reset > /mnt/bme680/ctl
-
 		# read sensor data
 		bmeraw=`{cat /mnt/bme680/all}
 		#echo $bmeraw >>/sys/log/bme680
