@@ -416,7 +416,7 @@ bme680resetparameters(void)
 	pardat.temp = 0x03;		/* 4x oversampling */
 	pardat.hum = 0x03;		/* 4x oversampling */
 	pardat.gastime = 0x59;	/* 100ms = 4 * 25ms */
-	pardat.gastemp = 100.0;	/* 100 deg C */
+	pardat.gastemp = 300.0;	/* 300 deg C */
 
 	/* init all measurments structure */
 	mesdat.temp = 0.0;
