@@ -3,6 +3,7 @@
 rfork
 
 if (! test -r /srv/bme680) {
-	# is bme680fs is not running, run it - change for your system
+	# if bme680fs is not running, run it - change for your system
 	/usr/glenda/data/projects/bme680fs/bme680fs
+	#/usr/glenda/data/projects/bme680fs/bme680fs -u
 }
