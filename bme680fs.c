@@ -1306,7 +1306,6 @@ threadmain(int argc, char *argv[])
 	ARGBEGIN {
 	case 'u':
 		stu = 1;
-		fprint(1, "going undocumented baby\n");
 		break;
 	case 'm':
 		mntpt = ARGF();
