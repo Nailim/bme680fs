@@ -36,6 +36,8 @@ void	initi2cdev(void);
 void	deiniti2cdev(void);
 void	closei2cdev(void);
 
+void	openi2cdevmain(void);
+void	closei2cdevmain(void);
 
 /* program logic functions, called from fs functions using I2C functions */
 char*	fsreadctl(Req *r);
@@ -70,7 +72,7 @@ void	bme680readcalibrationdata(void);
 float	bme680gettemp(void);
 float	bme680getpress(void);
 float	bme680gethum(void);
-void	bme680readall(void);
+void	bme680readall(int);
 
 
 struct CalibrationData {
@@ -130,6 +132,7 @@ struct AllParameters {
 	char hum;
 	char gastime;
 	short gastemp;
+	int looptime;
 };
 
 
@@ -197,7 +200,8 @@ const float gas_range_const_array2_f[16] = {
 };
 
 
-static int i2cfd;
+static int i2cfdfs;
+static int i2cfdmain;
 static CalibrationData caldat;
 static AllMeasurments mesdat;
 static AllParameters pardat;
@@ -211,6 +215,7 @@ enum
 	filter,
 	gas_wait,
 	gas_temp,
+	loop_time,
 	reset,
 };
 
@@ -221,6 +226,7 @@ static char *cmds[] = {
 	[filter]	= "filter",
 	[gas_wait]	= "gas_wait",
 	[gas_temp]	= "gas_temp",
+	[loop_time]	= "loop_time",
 	[reset]		= "reset",
 	nil
 };
@@ -228,6 +234,7 @@ static char *cmds[] = {
 
 /* logic state tracking variables */
 static int stu;		/* undocumented features - set parameters as observed from BSEC library instead of documentation */
+static int std;		/* threaded deamo - sample all sensor readings continiously instead of on demand (usefull for AQI) */
 
 
 
@@ -292,7 +299,7 @@ fsend(Srv *)
 void
 openi2cdev(void)
 {
-	i2cfd = -1;
+	i2cfdfs = -1;
 
 	/* default location of bme680 device is 0x77*/
 	if(access("/dev/i2c.77.data", 0) != 0){
@@ -300,8 +307,8 @@ openi2cdev(void)
 		    sysfatal("no J77 device");
         }
     }
-	i2cfd = open("/dev/i2c.77.data", ORDWR);
-	if(i2cfd < 0){
+	i2cfdfs = open("/dev/i2c.77.data", ORDWR);
+	if(i2cfdfs < 0){
 		sysfatal("cannot open i2c.77.data file");
     }
 }
@@ -379,7 +386,33 @@ deiniti2cdev(void)
 void
 closei2cdev(void)
 {
-	close(i2cfd);
+	close(i2cfdfs);
+
+	unmount("#J77", "/dev");
+}
+
+
+void
+openi2cdevmain(void)
+{
+	i2cfdmain = -1;
+
+	/* default location of bme680 device is 0x77*/
+	if(access("/dev/i2c.77.data", 0) != 0){
+		if(bind("#J77", "/dev", MBEFORE) < 0){
+		    sysfatal("no J77 device");
+        }
+    }
+	i2cfdmain = open("/dev/i2c.77.data", ORDWR);
+	if(i2cfdmain < 0){
+		sysfatal("cannot open i2c.77.data file");
+    }
+}
+
+void
+closei2cdevmain(void)
+{
+	close(i2cfdmain);
 
 	unmount("#J77", "/dev");
 }
@@ -395,8 +428,8 @@ bme680getchipid(void)
 
 	cmd = 0xD0;  /* location of id register */
 
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &res, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &res, 1, 0);
 
 	/* bme680 device id is 0x61 */
 	return res;
@@ -411,9 +444,9 @@ bme680softreset(void)
 	cmd[0] = 0xE0;  /* location of reset register */
 	cmd[1] = 0xB6;  /* reset command */
 
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 	sleep(5);
-	pread(i2cfd, &res, 1, 0);
+	pread(i2cfdfs, &res, 1, 0);
 
 	return res;
 }
@@ -426,7 +459,7 @@ bme680setundocumented(void)
 	cmd[0] = 0x71;  /* location of ctrl_gas_1 register */
 	cmd[1] = 0x80;  /* set bit 7 (undocumented, do not change) from 0 to 1 */
 
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 }
 
@@ -449,6 +482,8 @@ bme680resetparameters(void)
 		pardat.gastemp = 300.0;	/* 300 deg C */
 	}
 
+	pardat.looptime = 3000;	/* timeout between automatic samples in ms */
+
 	/* init all measurments structure */
 	mesdat.temp = 0.0;
 	mesdat.pres = 0.0;
@@ -464,99 +499,99 @@ bme680readcalibrationdata(void)
 
 	/* read temperature calibration data */
 	cmd = 0xE9;		/* par_t1 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_t1, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_t1, 2, 0);
 	cmd = 0x8A;		/* par_t2 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_t2, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_t2, 2, 0);
 	cmd = 0x8C;		/* par_t3 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_t3, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_t3, 1, 0);
 
 	/* read pressure calibration data */
 	cmd = 0x8E;		/* par_p1 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p1, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p1, 2, 0);
 	cmd = 0x90;		/* par_p2 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p2, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p2, 2, 0);
 	cmd = 0x92;		/* par_p3 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p3, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p3, 1, 0);
 	cmd = 0x94;		/* par_p4 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p4, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p4, 2, 0);
 	cmd = 0x96;		/* par_p5 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p5, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p5, 2, 0);
 	cmd = 0x99;		/* par_p6 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p6, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p6, 1, 0);
 	cmd = 0x98;		/* par_p7 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p7, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p7, 1, 0);
 	cmd = 0x9C;		/* par_p8 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p8, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p8, 2, 0);
 	cmd = 0x9E;		/* par_p9 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p9, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p9, 2, 0);
 	cmd = 0xA0;		/* par_p10 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_p10, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_p10, 1, 0);
 
 	/* read humidity calibration data */
 	/* par_h1 (lsb 4bit <3:0>), par_h2 (lsb 4bit <7:4>) */
 	cmd = 0xE2;
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &buf, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &buf, 1, 0);
 	cmd = 0xE3;		/* par_h1 (msb) - 12bit */
 	caldat.par_h1 = 0;	/* clear since we read in only 1 byte but the var is 2 bytes long */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h1, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h1, 1, 0);
 	caldat.par_h1 = (caldat.par_h1<<4) | ((unsigned short)(buf & 0x0F));	/* msb + lsb */
 	cmd = 0xE1;		/* par_h2 (msb) - 12bit */
 	caldat.par_h2 = 0;	/* clear since we read in only 1 byte but the var is 2 bytes long */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h2, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h2, 1, 0);
 	caldat.par_h2 = (caldat.par_h2<<4) | (((unsigned short)(buf & 0xF0))>>4);	/* msb + lsb */
 	cmd = 0xE4;		/* par_h3 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h3, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h3, 1, 0);
 	cmd = 0xE5;		/* par_h4 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h4, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h4, 1, 0);
 	cmd = 0xE6;		/* par_h5 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h5, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h5, 1, 0);
 	cmd = 0xE7;		/* par_h6 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h6, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h6, 1, 0);
 	cmd = 0xE8;		/* par_h7 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_h7, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_h7, 1, 0);
 
 	/* gas humidity calibration data */
 	cmd = 0xED;		/* par_g1 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_g1, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_g1, 1, 0);
 	cmd = 0xEB;		/* par_g2 address - 16bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_g2, 2, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_g2, 2, 0);
 	cmd = 0xEE;		/* par_g3 address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.par_g3, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.par_g3, 1, 0);
 
 	cmd = 0x02;		/* res_heat_range (lsb) - 2bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.res_heat_range, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.res_heat_range, 1, 0);
 	caldat.res_heat_range = (((char)(caldat.res_heat_range & 0x30))>>4);
 	cmd = 0x00;		/* res_heat_val address - 8bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.res_heat_val, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.res_heat_val, 1, 0);
 	cmd = 0x04;		/* range_sw_error address - 4bit */
-	pwrite(i2cfd, &cmd, 1, 0);
-	pread(i2cfd, &caldat.range_sw_error, 1, 0);
+	pwrite(i2cfdfs, &cmd, 1, 0);
+	pread(i2cfdfs, &caldat.range_sw_error, 1, 0);
 	caldat.range_sw_error = (((char)(caldat.range_sw_error & 0xF0))>>4);
 }
 
@@ -580,13 +615,14 @@ bme680gettemp(void)
 	/* wait if any measurment is in progress */
 	cmd[0] = 0x74;
 	do {
-		pwrite(i2cfd, &cmd[0], 1, 0);
-		pread(i2cfd, &buf[0], 1, 0);
+		pwrite(i2cfdfs, &cmd[0], 1, 0);
+		pread(i2cfdfs, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+
 	/* read control registries */
 	cmd[0] = 0x70;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &reg_val[0], 6, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &reg_val[0], 6, 0);
 
 
 	/* set humidity settings */
@@ -594,12 +630,12 @@ bme680gettemp(void)
 	/* 0x72 - ctrl_hum - osrs_h<2:0> - skip humidity measurment */
 	cmd[0] = 0x72;
 	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & 0x00);
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
 	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
@@ -607,27 +643,27 @@ bme680gettemp(void)
 	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
 	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
 	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, skip pressure measurment, FORCED MODE */
 	cmd[0] = 0x74;
 	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (0x00<<2) + 0x01));	
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
 	cmd[0] = 0x74;
 	do {
-		pwrite(i2cfd, &cmd[0], 1, 0);
-		pread(i2cfd, &buf[0], 1, 0);
+		pwrite(i2cfdfs, &cmd[0], 1, 0);
+		pread(i2cfdfs, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
 	cmd[0] = 0x22;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &buf[0], 3, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &buf[0], 3, 0);
 
 	/* calculate values */
 	temp_raw = ((int)((int)buf[0]<<16) | (int)((int)buf[1]<<8) | (int)buf[2])>>4;
@@ -664,13 +700,14 @@ bme680getpress(void)
 	/* wait if any measurment is in progress */
 	cmd[0] = 0x74;
 	do {
-		pwrite(i2cfd, &cmd[0], 1, 0);
-		pread(i2cfd, &buf[0], 1, 0);
+		pwrite(i2cfdfs, &cmd[0], 1, 0);
+		pread(i2cfdfs, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+
 	/* read control registries */
 	cmd[0] = 0x70;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &reg_val[0], 6, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &reg_val[0], 6, 0);
 
 
 	/* set humidity settings */
@@ -678,12 +715,12 @@ bme680getpress(void)
 	/* 0x72 - ctrl_hum - osrs_h<2:0> - skip humidity measurment */
 	cmd[0] = 0x72;
 	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & 0x00);
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
 	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
@@ -691,27 +728,27 @@ bme680getpress(void)
 	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
 	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
 	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, set pressure, FORCED MODE */
 	cmd[0] = 0x74;
 	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (pardat.pres<<2) + 0x01));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
 	cmd[0] = 0x74;
 	do {
-		pwrite(i2cfd, &cmd[0], 1, 0);
-		pread(i2cfd, &buf[0], 1, 0);
+		pwrite(i2cfdfs, &cmd[0], 1, 0);
+		pread(i2cfdfs, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
 	cmd[0] = 0x22;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &buf[0], 3, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &buf[0], 3, 0);
 
 	/* calculate values */
 	temp_raw = ((int)((int)buf[0]<<16) | (int)((int)buf[1]<<8) | (int)buf[2])>>4;
@@ -724,8 +761,8 @@ bme680getpress(void)
 
 	/* read pressure from adc */
 	cmd[0] = 0x1F;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &buf[0], 3, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &buf[0], 3, 0);
 
 	/* calculate values */
 	pres_raw = ((int)((int)buf[0]<<16) | (int)((int)buf[1]<<8) | (int)buf[2])>>4;
@@ -770,13 +807,14 @@ bme680gethum(void)
 	/* wait if any measurment is in progress */
 	cmd[0] = 0x74;
 	do {
-		pwrite(i2cfd, &cmd[0], 1, 0);
-		pread(i2cfd, &buf[0], 1, 0);
+		pwrite(i2cfdfs, &cmd[0], 1, 0);
+		pread(i2cfdfs, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+
 	/* read control registries */
 	cmd[0] = 0x70;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &reg_val[0], 6, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &reg_val[0], 6, 0);
 
 
 	/* set humidity settings */
@@ -784,12 +822,12 @@ bme680gethum(void)
 	/* 0x72 - ctrl_hum - osrs_h<2:0> - set humidity */
 	cmd[0] = 0x72;
 	cmd[1] = (reg_val[2] & ~MASK_CTRL_REG_72) | (MASK_CTRL_REG_72 & pardat.hum);
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 	/* 0x75 - config - filter<4:2> - low pass filter for temp and pressure */
 	cmd[0] = 0x75;
 	cmd[1] = (reg_val[5] & ~MASK_CTRL_REG_75) | (MASK_CTRL_REG_75 & (pardat.filter<<2));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 
 	/* set gas settings */
@@ -797,27 +835,27 @@ bme680gethum(void)
 	/* 0x71 - ctrl_gas_1 - run_gass<4> - skip gass measurment */
 	cmd[0] = 0x71;
 	cmd[1] = (reg_val[1] & ~MASK_CTRL_REG_71) | (MASK_CTRL_REG_71 & (0x00<<4));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 
 	/* set temperature and pressure settings settings + set forced mode - execute measurment */
 	/* 0x74 - ctrl_meas - osrs_t<7:5> osrs_p<4:2> mode<1:0> - set temp, skip pressure measurment, FORCED MODE */
 	cmd[0] = 0x74;
 	cmd[1] = (reg_val[4] & ~MASK_CTRL_REG_74) | (MASK_CTRL_REG_74 & ((pardat.temp<<5) + (0x00<<2) + 0x01));
-	pwrite(i2cfd, &cmd[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 2, 0);
 
 	/* wait while measurment is in progress */
 	cmd[0] = 0x74;
 	do {
-		pwrite(i2cfd, &cmd[0], 1, 0);
-		pread(i2cfd, &buf[0], 1, 0);
+		pwrite(i2cfdfs, &cmd[0], 1, 0);
+		pread(i2cfdfs, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
 
 
 	/* read temperature from adc */
 	cmd[0] = 0x22;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &buf[0], 3, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &buf[0], 3, 0);
 
 	/* calculate values */
 	temp_raw = ((int)((int)buf[0]<<16) | (int)((int)buf[1]<<8) | (int)buf[2])>>4;
@@ -832,8 +870,8 @@ bme680gethum(void)
 
 	/* read humidity from adc */
 	cmd[0] = 0x25;
-	pwrite(i2cfd, &cmd[0], 1, 0);
-	pread(i2cfd, &buf[0], 2, 0);
+	pwrite(i2cfdfs, &cmd[0], 1, 0);
+	pread(i2cfdfs, &buf[0], 2, 0);
 
 	/* calculate values */
 	hum_raw = ((int)(((int)buf[0])<<8) | (int)buf[1]);
@@ -849,7 +887,7 @@ bme680gethum(void)
 }
 
 void
-bme680readall(void)
+bme680readall(int i2cfd)
 {
 	int temp_raw;
 	int pres_raw;
@@ -887,6 +925,7 @@ bme680readall(void)
 		pwrite(i2cfd, &cmd[0], 1, 0);
 		pread(i2cfd, &buf[0], 1, 0);
 	} while ((buf[0] & MASK_CTRL_MEAS_MODE) > 0);
+
 	/* read control registries */
 	cmd[0] = 0x70;
 	pwrite(i2cfd, &cmd[0], 1, 0);
@@ -932,7 +971,6 @@ bme680readall(void)
 	cmd[0] = 0x22;
 	pwrite(i2cfd, &cmd[0], 1, 0);
 	pread(i2cfd, &buf[0], 3, 0);
-
 
 	/* calculate values */
 	temp_raw = ((int)((int)buf[0]<<16) | (int)((int)buf[1]<<8) | (int)buf[2])>>4;
@@ -1073,8 +1111,8 @@ fsreadctl(Req *r)
 {
 	char out[128];
 
-	snprint(out, sizeof(out), "osrs_t: 0x%02x, osrs_p: 0x%02x, osrs_h: 0x%02x, filter: 0x%02x, gas_wait: 0x%02x, gas_temp %03d\n", 
-			pardat.temp, pardat.pres, pardat.hum, pardat.filter, pardat.gastime, pardat.gastemp);
+	snprint(out, sizeof(out), "osrs_t: 0x%02x, osrs_p: 0x%02x, osrs_h: 0x%02x, filter: 0x%02x, gas_wait: 0x%02x, gas_temp %03d, loop_time %d\n", 
+			pardat.temp, pardat.pres, pardat.hum, pardat.filter, pardat.gastime, pardat.gastemp, pardat.looptime);
 
 	readstr(r, out);
 	return nil;
@@ -1154,6 +1192,13 @@ fswritectl(Req *r)
 			pardat.gastemp = 400;	
 		}
 		break;
+	case loop_time:
+		para = strtol(s, nil, 10);
+		pardat.looptime = (int)para;
+		if(para < 1000){
+			pardat.looptime = 1000;	
+		}
+		break;
 	case reset:
 		/* no parameters here */
 		/* perform reset - ignore reset status, if we're here it was able to reset on init */
@@ -1175,7 +1220,15 @@ char*
 fsreadtemp(Req *r)
 {
 	char out[16];
-	float temp = bme680gettemp();
+	float temp;
+
+	if (std == 0) {
+		/* on demand */
+		temp = bme680gettemp();
+	} else {
+		/* continiues sampling */
+		temp = mesdat.temp;
+	}
 
 	snprint(out, sizeof(out), "%.2f C\n", temp);
 
@@ -1195,7 +1248,15 @@ char*
 fsreadpress(Req *r)
 {
 	char out[16];
-	float press = bme680getpress();
+	float press;
+
+	if (std == 0) {
+		/* on demand */
+		press = bme680getpress();
+	} else {
+		/* continiues sampling */
+		press = mesdat.pres;
+	}
 
 	snprint(out, sizeof(out), "%.2f hPa\n", press / 100.0f);
 
@@ -1215,7 +1276,15 @@ char*
 fsreadhum(Req *r)
 {
 	char out[16];
-	float hum = bme680gethum();
+	float hum;
+
+	if (std == 0) {
+		/* on demand */
+		hum = bme680gethum();
+	} else {
+		/* continiues sampling */
+		hum = mesdat.hum;
+	}
 
 	snprint(out, sizeof(out), "%.2f %%r.H.\n", hum);
 
@@ -1235,7 +1304,11 @@ char*
 fsreadgas(Req *r)
 {
 	char out[16];
-	bme680readall();
+
+	if (std == 0) {
+		/* on demand only*/
+		bme680readall(i2cfdfs);
+	}
 
 	snprint(out, sizeof(out), "%.2f Ohm\n", mesdat.gas);
 
@@ -1255,7 +1328,11 @@ char*
 fsreadall(Req *r)
 {
 	char out[128];
-	bme680readall();
+
+	if (std == 0) {
+		/* on demand only*/
+		bme680readall(i2cfdfs);
+	}
 
 	snprint(out, sizeof(out), "temp(C):\t%.2f\thum(%%r.H.):\t%.2f\tpres(hPa):\t%.2f\tgas(Ohm):\t%.2f\n", mesdat.temp, mesdat.hum, mesdat.pres / 100.0f, mesdat.gas);
 
@@ -1272,11 +1349,22 @@ fswriteall(Req *r)
 }
 
 
+static void
+timerproc(void *c)
+{
+	threadsetname("timer");
+	for (;;) {
+		sleep(pardat.looptime);
+		sendul(c, 0);
+	}
+}
+
+
 void
 usage(void)
 {
-	fprint(2, "usage: %s [-u] [-m mntpt] [-s srvname]\n", argv0);
-	exits("usage");
+	fprint(2, "usage: %s [-u] [-d] [-m mntpt] [-s srvname]\n", argv0);
+	threadexitsall("usage");
 }
 
 
@@ -1285,6 +1373,7 @@ threadmain(int argc, char *argv[])
 {
 	/* state tracking initialization */
 	stu = 0;
+	std = 0;
 
 
 	char *srvname, *mntpt;
@@ -1292,9 +1381,26 @@ threadmain(int argc, char *argv[])
 	srvname = "bme680";
 	mntpt = "/mnt";
 
+
+	enum {
+		Etimer,
+		Eend,
+	};
+
+	Alt a[] = {
+		[Etimer] = { nil, nil, CHANRCV },
+		[Eend] = { nil, nil, CHANEND },
+	};
+
+	a[Etimer].c = chancreate(sizeof(ulong), 0);
+
+
 	ARGBEGIN {
 	case 'u':
 		stu = 1;
+		break;
+	case 'd':
+		std = 1;
 		break;
 	case 'm':
 		mntpt = ARGF();
@@ -1310,6 +1416,30 @@ threadmain(int argc, char *argv[])
 	initfs(srvname);
 
 	threadpostmountsrv(&fs, srvname, mntpt, MBEFORE);
+
+
+	if (std == 1) {
+		openi2cdevmain();	/* hacky hack to get access to I2C device in main thread (threading and namespaces are interesting) */
+
+		proccreate(timerproc, a[Etimer].c, 4096);
+
+		for(;;){
+			switch(alt(a)){
+
+			case Etimer:
+				bme680readall(i2cfdmain);
+
+			// default:
+			// 	continue;
+			}
+
+			if (0) {
+				break;
+			}
+		}
+
+		closei2cdevmain();
+	}
 
 	threadexits(nil);
 }
