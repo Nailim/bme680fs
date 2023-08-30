@@ -6,4 +6,5 @@ if (! test -r /srv/bme680) {
 	# if bme680fs is not running, run it - change for your system
 	/usr/glenda/data/projects/bme680fs/bme680fs
 	#/usr/glenda/data/projects/bme680fs/bme680fs -u
+	#/usr/glenda/data/projects/bme680fs/bme680fs -u -d &
 }
