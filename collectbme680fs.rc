@@ -6,6 +6,10 @@
 # 0,5,10,15,20,25,30,35,40,45,55 * * * * local collectbme680fs.rc
 
 
+# set file retention history in seconds (0 for unlimited)
+fh=0
+
+
 #rfork
 
 # log file location
@@ -38,4 +42,16 @@ if (test -r /srv/bme680) {
 		hdate=`{date -f $hdf $mdate}
 		echo $mdate $hdate $bmeraw | awk '{print $1"\t"$2"\t"$4"\t"$6"\t"$8"\t"$10}' >>$lf
 	}
+}
+
+# prune older data if set
+if (test $fh -gt 0) {
+	temp=/tmp/bme680-$pid
+	
+	dn=`{date -n}
+	cod=`{echo $dn - $fh | bc}
+
+	cat /sys/log/bme680 | awk -v 'cod='$cod -v 'dn='$dn '{if ($1 > cod) print $0;}' > $temp
+
+	mv $temp $lf
 }
