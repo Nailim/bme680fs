@@ -454,7 +454,6 @@ bme680resetparameters(void)
 	mesdat.pres = 0.0;
 	mesdat.hum = 0.0;
 	mesdat.gas = 0.0;
-	mesdat.time = 0;
 }
 
 void
@@ -852,16 +851,6 @@ bme680gethum(void)
 void
 bme680readall(void)
 {
-	/* special feature - to avoid burning up the sensor (ask me how I know) the gas reading will be limited to a certain period only */
-	/* too frequent gas measurment can be also called by the fs, since the function is executed everytime the interface file is opened */
-	int curtime = time(nil);
-
-	/* so if time difference is less than (what ever is in the if statement - counts as seconds) just return previous values */
-	if(curtime - mesdat.time < 5){
-		return;
-	}
-
-
 	int temp_raw;
 	int pres_raw;
 	int hum_raw;
@@ -1069,11 +1058,11 @@ bme680readall(void)
 	gas_comp = var1 * (float)gas_range_const_array2_f[gas_range] / ((float)gas_raw - 512.0f + var1);
 
 
+	/* save results */
 	mesdat.temp = temp_comp;
 	mesdat.pres = pres_comp;
 	mesdat.hum = hum_comp;
 	mesdat.gas = gas_comp;
-	mesdat.time = time(nil);
 }
 
 
