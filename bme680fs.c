@@ -302,12 +302,12 @@ openi2cdev(void)
 	i2cfdfs = -1;
 
 	/* default location of bme680 device is 0x77*/
-	if(access("/dev/i2c.77.data", 0) != 0){
+	if(access("/dev/i2c1/i2c.77.data", 0) != 0){
 		if(bind("#J77", "/dev", MBEFORE) < 0){
 		    sysfatal("no J77 device");
         }
     }
-	i2cfdfs = open("/dev/i2c.77.data", ORDWR);
+	i2cfdfs = open("/dev/i2c1/i2c.77.data", ORDWR);
 	if(i2cfdfs < 0){
 		sysfatal("cannot open i2c.77.data file");
     }
@@ -398,12 +398,12 @@ openi2cdevmain(void)
 	i2cfdmain = -1;
 
 	/* default location of bme680 device is 0x77*/
-	if(access("/dev/i2c.77.data", 0) != 0){
+	if(access("/dev/i2c1/i2c.77.data", 0) != 0){
 		if(bind("#J77", "/dev", MBEFORE) < 0){
 		    sysfatal("no J77 device");
         }
     }
-	i2cfdmain = open("/dev/i2c.77.data", ORDWR);
+	i2cfdmain = open("/dev/i2c1/i2c.77.data", ORDWR);
 	if(i2cfdmain < 0){
 		sysfatal("cannot open i2c.77.data file");
     }
