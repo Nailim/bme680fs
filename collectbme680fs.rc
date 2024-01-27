@@ -7,7 +7,7 @@
 
 
 # set file retention history in seconds (0 for unlimited)
-fh=0
+fh=604800
 
 
 #rfork
