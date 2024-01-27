@@ -1,0 +1,79 @@
+#!/bin/rc
+
+# collects data from bme680fs to shared memory created with ramfs
+# requirements and set up:
+# - set up shmsensors service (/srv/shmsensors) at boot somewhere (/cfg/.../cpustart)
+# -- do that with "ramfs -S shmsensors" and dont forget to set permissions "chmod 666 /srv/shmsensors"
+# - mount shared memory per process (/mnt/shmsensors) with "mount -c /srv/shmsensors /mnt/shmsensors"
+# - (optional) have a script to periodicly save dato from shared memory to disk if desired
+# -- (cron e.g.) "3 * * * * local mount -c /srv/shmsensors /mnt/shmsensors && cp /mnt/shmsensors/* /sys/log/"
+
+
+
+# set file retention history in seconds (0 for unlimited)
+fh=604800
+
+# log file location
+lf=/mnt/shmsensors/bme680
+
+# human readable date format (no whitespace)
+hdf=YYYY.MM.DD-hh:mm:ss
+
+
+
+# only run if shared ramfs is accesible
+if (test ! -r /srv/shmsensors) {
+	exit
+}
+
+# only run sensor is accesible
+if (test ! -r /srv/bme680) {
+	exit
+}
+
+# mount ...
+if (test `{ns | grep shmsensors | wc -l} -eq '0') {
+	mount -c /srv/shmsensors /mnt/shmsensors
+}
+
+
+
+# if no data yet in ramfs, copy from storage
+if (test ! -r $lf) {
+	cp /sys/log/bme680* /mnt/shmsensors
+}
+
+
+
+# create file with data headder to describe values
+if (! test -r $lf.header){
+	echo 'timestamp datetime temp(C) hum(%r.H.) pres(hPa) gas(Ohm)' \
+	| awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' >>$lf.header
+}
+
+# mount sensor if not mounted
+if (test ! -r /mnt/bme680/all) {
+	mount -b /srv/bme680 /mnt
+}
+
+# if mounted collect data and save
+if (test -r /mnt/bme680/all) {
+	# read sensor data
+	bmeraw=`{cat /mnt/bme680/all}
+
+	mdate=`{date -n}
+	hdate=`{date -f $hdf $mdate}
+	echo $mdate $hdate $bmeraw | awk '{print $1"\t"$2"\t"$4"\t"$6"\t"$8"\t"$10}' >>$lf
+}
+
+# prune older data if set
+if (test $fh -gt 0) {
+	temp=/mnt/shmsensors/bme680-$pid
+	
+	dn=`{date -n}
+	cod=`{echo $dn - $fh | bc}
+
+	cat /mnt/shmsensors/bme680 | awk -v 'cod='$cod -v 'dn='$dn '{if ($1 > cod) print $0;}' > $temp
+
+	mv $temp $lf
+}
